@@ -37,6 +37,7 @@ metacity_SOURCES= 				\
 	core/frame.c				\
 	core/frame-private.h			\
 	include/frame.h				\
+	gdk-compat.h				\
 	ui/gradient.c				\
 	ui/gradient.h				\
 	core/group-private.h			\
