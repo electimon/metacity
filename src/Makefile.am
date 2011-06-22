@@ -142,7 +142,7 @@ schema_bindings_SOURCES =       \
 schema_bindings_LDADD = @METACITY_LIBS@
 metacity.schemas.in: schema_bindings ${srcdir}/metacity.schemas.in.in
 	@echo Generating keybinding schemas... ${srcdir}/metacity.schemas.in.in
-	${builddir}/schema_bindings ${srcdir}/metacity.schemas.in.in ${builddir}/metacity.schemas.in
+	$(AM_V_GEN)${builddir}/schema_bindings ${srcdir}/metacity.schemas.in.in ${builddir}/metacity.schemas.in
 
 bin_PROGRAMS=metacity metacity-theme-viewer
 
@@ -200,7 +200,7 @@ BUILT_SOURCES = inlinepixbufs.h
 CLEANFILES = inlinepixbufs.h metacity.desktop metacity-wm.desktop metacity.schemas metacity.schemas.in 50-metacity-desktop-key.xml 50-metacity-key.xml
 
 inlinepixbufs.h: $(IMAGES)
-	$(GDK_PIXBUF_CSOURCE) --raw --build-list $(VARIABLES) >$(srcdir)/inlinepixbufs.h
+	$(AM_V_GEN)$(GDK_PIXBUF_CSOURCE) --raw --build-list $(VARIABLES) >$(srcdir)/inlinepixbufs.h
 
 pkgconfigdir = $(libdir)/pkgconfig
 
