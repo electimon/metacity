@@ -191,10 +191,12 @@ else
 install-data-local:
 endif
 
-IMAGES=stock_maximize.png stock_minimize.png stock_delete.png
+IMAGES=stock_maximize.png stock_minimize.png stock_delete.png window.png mini-window.png
 VARIABLES=stock_maximize_data $(srcdir)/stock_maximize.png \
           stock_minimize_data $(srcdir)/stock_minimize.png \
-          stock_delete_data $(srcdir)/stock_delete.png
+          stock_delete_data $(srcdir)/stock_delete.png \
+          mini_window_data $(srcdir)/mini-window.png \
+          window_data $(srcdir)/window.png
 
 BUILT_SOURCES = inlinepixbufs.h
 CLEANFILES = inlinepixbufs.h metacity.desktop metacity-wm.desktop metacity.schemas metacity.schemas.in 50-metacity-desktop-key.xml 50-metacity-key.xml
