@@ -98,6 +98,7 @@ static int   cursor_size = 24;
 static gboolean compositing_manager = FALSE;
 static gboolean resize_with_right_button = FALSE;
 static gboolean force_fullscreen = TRUE;
+static gboolean edge_tiling = FALSE;
 
 static MetaVisualBellType visual_bell_type = META_VISUAL_BELL_FULLSCREEN_FLASH;
 static MetaButtonLayout button_layout;
@@ -410,6 +411,11 @@ static MetaBoolPreference preferences_bool[] =
     { "/apps/metacity/general/resize_with_right_button",
       META_PREF_RESIZE_WITH_RIGHT_BUTTON,
       &resize_with_right_button,
+      FALSE,
+    },
+    { "/apps/metacity/general/edge-tiling",
+      META_PREF_EDGE_TILING,
+      &edge_tiling,
       FALSE,
     },
     { NULL, 0, NULL, FALSE },
@@ -1755,6 +1761,9 @@ meta_preference_to_string (MetaPreference pref)
     case META_PREF_RESIZE_WITH_RIGHT_BUTTON:
       return "RESIZE_WITH_RIGHT_BUTTON";
 
+    case META_PREF_EDGE_TILING:
+      return "EDGE_TILING";
+
     case META_PREF_FORCE_FULLSCREEN:
       return "FORCE_FULLSCREEN";
     }
@@ -2643,6 +2652,12 @@ gboolean
 meta_prefs_get_gnome_animations ()
 {
   return gnome_animations;
+}
+
+gboolean
+meta_prefs_get_edge_tiling ()
+{
+  return edge_tiling;
 }
 
 MetaKeyBindingAction
