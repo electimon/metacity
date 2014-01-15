@@ -428,6 +428,7 @@ setup_constraint_info (ConstraintInfo      *info,
    * as fullscreen, even if there are no struts making the
    * workarea smaller than the monitor.
    */
+
   if (meta_prefs_get_force_fullscreen() &&
       window->decorated &&
       meta_rectangle_equal (new, &xinerama_info->rect) &&
