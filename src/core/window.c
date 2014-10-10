@@ -469,6 +469,7 @@ meta_window_new_with_attrs (MetaDisplay       *display,
   window->require_titlebar_visible = TRUE;
   window->on_all_workspaces = FALSE;
   window->shaded = FALSE;
+  window->fullscreen = FALSE;
   window->initially_iconic = FALSE;
   window->minimized = FALSE;
   window->was_minimized = FALSE;
