@@ -63,6 +63,7 @@ item(_GNOME_PANEL_ACTION_MAIN_MENU)
 item(_GNOME_PANEL_ACTION_RUN_DIALOG)
 item(_METACITY_SENTINEL)
 item(_METACITY_VERSION)
+item(_GTK_FRAME_EXTENTS)
 item(WM_CLIENT_MACHINE)
 item(MANAGER)
 item(TARGETS)
@@ -70,7 +71,6 @@ item(MULTIPLE)
 item(TIMESTAMP)
 item(VERSION)
 item(ATOM_PAIR)
-item(_GTK_FRAME_EXTENTS)
 
 /* Oddities: These are used, and we need atoms for them,
  * but when we need all _NET_WM hints (i.e. when we're making
