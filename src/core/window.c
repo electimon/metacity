@@ -4758,7 +4758,6 @@ meta_window_configure_request (MetaWindow *window,
         }
       else if (active_window &&
                !meta_window_same_application (window, active_window) &&
-               !meta_window_same_client (window, active_window) &&
                XSERVER_TIME_IS_BEFORE (window->net_wm_user_time,
                                        active_window->net_wm_user_time))
         {
