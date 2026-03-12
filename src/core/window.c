@@ -2221,7 +2221,7 @@ meta_window_show (MetaWindow *window)
        */
       if (overlap || 
           (meta_prefs_get_focus_mode () == META_FOCUS_MODE_CLICK &&
-           meta_prefs_get_raise_on_click ()))
+           meta_prefs_get_raise_on_click ())))
         meta_window_stack_just_below (window, focus_window);
 
       /* If the window will be obscured by the focus window, then the
