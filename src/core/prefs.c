@@ -98,7 +98,7 @@ static int   cursor_size = 24;
 static gboolean compositing_manager = FALSE;
 static gboolean resize_with_right_button = FALSE;
 static gboolean force_fullscreen = TRUE;
-static gboolean edge_tiling = FALSE;
+static gboolean edge_tiling = TRUE;
 
 static MetaVisualBellType visual_bell_type = META_VISUAL_BELL_FULLSCREEN_FLASH;
 static MetaButtonLayout button_layout;
@@ -416,7 +416,7 @@ static MetaBoolPreference preferences_bool[] =
     { "/apps/metacity/general/edge-tiling",
       META_PREF_EDGE_TILING,
       &edge_tiling,
-      FALSE,
+      TRUE,
     },
     { NULL, 0, NULL, FALSE },
   };
