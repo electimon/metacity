@@ -982,6 +982,8 @@ meta_window_free (MetaWindow  *window,
   
   meta_verbose ("Unmanaging 0x%lx\n", window->xwindow);
 
+  tab_thumb_cache_remove (window);
+
   if (window->display->compositor)
     meta_compositor_free_window (window->display->compositor, window);
   

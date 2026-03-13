@@ -45,6 +45,9 @@
 #ifdef HAVE_XFREE_XINERAMA
 #include <X11/extensions/Xinerama.h>
 #endif
+#ifdef HAVE_COMPOSITE_EXTENSIONS
+#include <X11/extensions/Xrender.h>
+#endif
 
 #include <X11/Xatom.h>
 #include <locale.h>
@@ -1205,12 +1208,12 @@ meta_screen_update_cursor (MetaScreen *screen)
   XFreeCursor (screen->display->xdisplay, xcursor);
 }
 
-#define MAX_PREVIEW_SIZE 150.0
+#define MAX_PREVIEW_SIZE 150
 
 static GdkPixbuf *
-get_window_pixbuf (MetaWindow *window,
-                   int        *width,
-                   int        *height)
+get_window_pixbuf_fallback (MetaWindow *window,
+                            int        *width,
+                            int        *height)
 {
   Pixmap pmap;
   GdkPixbuf *pixbuf, *scaled;
@@ -1228,17 +1231,20 @@ get_window_pixbuf (MetaWindow *window,
   *width = gdk_pixbuf_get_width (pixbuf);
   *height = gdk_pixbuf_get_height (pixbuf);
 
+  if (*width <= MAX_PREVIEW_SIZE && *height <= MAX_PREVIEW_SIZE)
+    return pixbuf;
+
   /* Scale pixbuf to max dimension MAX_PREVIEW_SIZE */
   if (*width > *height)
     {
       ratio = ((double) *width) / MAX_PREVIEW_SIZE;
-      *width = (int) MAX_PREVIEW_SIZE;
+      *width = MAX_PREVIEW_SIZE;
       *height = (int) (((double) *height) / ratio);
     }
   else
     {
       ratio = ((double) *height) / MAX_PREVIEW_SIZE;
-      *height = (int) MAX_PREVIEW_SIZE;
+      *height = MAX_PREVIEW_SIZE;
       *width = (int) (((double) *width) / ratio);
     }
 
@@ -1247,7 +1253,271 @@ get_window_pixbuf (MetaWindow *window,
   g_object_unref (pixbuf);
   return scaled;
 }
-                                         
+
+
+#ifdef HAVE_COMPOSITE_EXTENSIONS
+static void
+calculate_preview_size (int  src_width,
+                        int  src_height,
+                        int *dst_width,
+                        int *dst_height)
+{
+  if (src_width <= MAX_PREVIEW_SIZE && src_height <= MAX_PREVIEW_SIZE)
+    {
+      *dst_width = src_width;
+      *dst_height = src_height;
+    }
+  else if (src_width > src_height)
+    {
+      *dst_width = MAX_PREVIEW_SIZE;
+      *dst_height = MAX (1, (src_height * MAX_PREVIEW_SIZE) / src_width);
+    }
+  else
+    {
+      *dst_height = MAX_PREVIEW_SIZE;
+      *dst_width = MAX (1, (src_width * MAX_PREVIEW_SIZE) / src_height);
+    }
+}
+
+static const char *
+get_thumbnail_filter (Display  *xdisplay,
+                      Drawable  drawable)
+{
+  static int filter_mode = -1;
+
+  if (filter_mode < 0)
+    {
+      XFilters *filters;
+      int i;
+      gboolean have_nearest;
+
+      filter_mode = 0;
+      have_nearest = FALSE;
+
+      filters = XRenderQueryFilters (xdisplay, drawable);
+      if (filters != NULL)
+        {
+          for (i = 0; i < filters->nfilter; i++)
+            {
+              if (strcmp (filters->filter[i], "bilinear") == 0)
+                {
+                  filter_mode = 1;
+                  break;
+                }
+              else if (strcmp (filters->filter[i], "nearest") == 0)
+                {
+                  have_nearest = TRUE;
+                }
+            }
+
+          if (filter_mode == 0 && have_nearest)
+            filter_mode = 2;
+
+          XFree (filters);
+        }
+    }
+
+  switch (filter_mode)
+    {
+    case 1:
+      return "bilinear";
+    case 2:
+      return "nearest";
+    default:
+      return NULL;
+    }
+}
+
+static GdkPixbuf *
+get_window_pixbuf_xrender (MetaWindow *window,
+                           int        *width,
+                           int        *height)
+{
+  MetaDisplay *display;
+  Display *xdisplay;
+  Pixmap src_pixmap;
+  Pixmap dst_pixmap;
+  Picture src_picture;
+  Picture dst_picture;
+  XRenderPictFormat *format;
+  Window root;
+  int x, y;
+  unsigned int src_width, src_height, border_width, depth;
+  int dst_width, dst_height;
+  int event_base, error_base;
+  XTransform transform;
+  GdkPixbuf *pixbuf;
+  const char *filter;
+  Status status;
+
+  display = window->display;
+  xdisplay = display->xdisplay;
+  src_pixmap = meta_compositor_get_window_pixmap (display->compositor, window);
+  if (src_pixmap == None)
+    return NULL;
+
+  if (!XRenderQueryExtension (xdisplay, &event_base, &error_base))
+    return NULL;
+
+  meta_error_trap_push_with_return (display);
+  status = XGetGeometry (xdisplay, src_pixmap,
+                         &root, &x, &y,
+                         &src_width, &src_height,
+                         &border_width, &depth);
+  if (meta_error_trap_pop_with_return (display, FALSE) != Success ||
+      !status || src_width == 0 || src_height == 0)
+    return NULL;
+
+  calculate_preview_size (src_width, src_height, &dst_width, &dst_height);
+  *width = dst_width;
+  *height = dst_height;
+
+  if ((int) src_width == dst_width && (int) src_height == dst_height)
+    return meta_ui_get_pixbuf_from_pixmap (src_pixmap);
+
+  switch (depth)
+    {
+    case 32:
+      format = XRenderFindStandardFormat (xdisplay, PictStandardARGB32);
+      break;
+    case 24:
+      format = XRenderFindStandardFormat (xdisplay, PictStandardRGB24);
+      break;
+    default:
+      return NULL;
+    }
+
+  if (format == NULL)
+    return NULL;
+
+  dst_pixmap = XCreatePixmap (xdisplay, src_pixmap, dst_width, dst_height, depth);
+  if (dst_pixmap == None)
+    return NULL;
+
+  src_picture = None;
+  dst_picture = None;
+  pixbuf = NULL;
+
+  meta_error_trap_push_with_return (display);
+
+  src_picture = XRenderCreatePicture (xdisplay, src_pixmap, format, 0, NULL);
+  dst_picture = XRenderCreatePicture (xdisplay, dst_pixmap, format, 0, NULL);
+
+  if (depth == 32)
+    {
+      XRenderColor clear = { 0, 0, 0, 0 };
+      XRenderFillRectangle (xdisplay, PictOpSrc, dst_picture, &clear,
+                            0, 0, dst_width, dst_height);
+    }
+
+  memset (&transform, 0, sizeof (transform));
+  transform.matrix[0][0] = XDoubleToFixed ((double) src_width / dst_width);
+  transform.matrix[1][1] = XDoubleToFixed ((double) src_height / dst_height);
+  transform.matrix[2][2] = XDoubleToFixed (1.0);
+
+  XRenderSetPictureTransform (xdisplay, src_picture, &transform);
+
+  filter = get_thumbnail_filter (xdisplay, src_pixmap);
+  if (filter != NULL)
+    XRenderSetPictureFilter (xdisplay, src_picture, filter, NULL, 0);
+
+  XRenderComposite (xdisplay, PictOpSrc,
+                    src_picture, None, dst_picture,
+                    0, 0, 0, 0, 0, 0,
+                    dst_width, dst_height);
+
+  XSync (xdisplay, False);
+
+  if (meta_error_trap_pop_with_return (display, FALSE) == Success)
+    pixbuf = meta_ui_get_pixbuf_from_pixmap (dst_pixmap);
+
+  if (src_picture != None)
+    XRenderFreePicture (xdisplay, src_picture);
+  if (dst_picture != None)
+    XRenderFreePicture (xdisplay, dst_picture);
+  XFreePixmap (xdisplay, dst_pixmap);
+
+  return pixbuf;
+}
+#endif
+
+static GHashTable *tab_thumb_cache = NULL;
+
+static void
+ensure_tab_thumb_cache (void)
+{
+  if (tab_thumb_cache == NULL)
+    tab_thumb_cache = g_hash_table_new_full (g_direct_hash,
+                                             g_direct_equal,
+                                             NULL,
+                                             (GDestroyNotify) g_object_unref);
+}
+
+static GdkPixbuf *
+tab_thumb_cache_lookup (MetaWindow *window)
+{
+  ensure_tab_thumb_cache ();
+  return g_hash_table_lookup (tab_thumb_cache, window);
+}
+
+static void
+tab_thumb_cache_store (MetaWindow *window,
+                       GdkPixbuf  *pixbuf)
+{
+  ensure_tab_thumb_cache ();
+  g_hash_table_replace (tab_thumb_cache, window, g_object_ref (pixbuf));
+}
+
+void
+tab_thumb_cache_remove (MetaWindow *window)
+{
+  if (tab_thumb_cache != NULL)
+    g_hash_table_remove (tab_thumb_cache, window);
+}
+
+static GdkPixbuf *
+get_window_pixbuf (MetaWindow *window,
+                   int        *width,
+                   int        *height)
+{
+  GdkPixbuf *pixbuf;
+
+  if (window->minimized)
+    {
+      pixbuf = tab_thumb_cache_lookup (window);
+      if (pixbuf != NULL)
+        {
+          *width = gdk_pixbuf_get_width (pixbuf);
+          *height = gdk_pixbuf_get_height (pixbuf);
+          return g_object_ref (pixbuf);
+        }
+
+      if (window->icon != NULL)
+        {
+          *width = gdk_pixbuf_get_width (window->icon);
+          *height = gdk_pixbuf_get_height (window->icon);
+          return g_object_ref (window->icon);
+        }
+
+      return NULL;
+    }
+
+#ifdef HAVE_COMPOSITE_EXTENSIONS
+  pixbuf = get_window_pixbuf_xrender (window, width, height);
+  if (pixbuf != NULL)
+    {
+      tab_thumb_cache_store (window, pixbuf);
+      return pixbuf;
+    }
+#endif
+
+  pixbuf = get_window_pixbuf_fallback (window, width, height);
+  if (pixbuf != NULL)
+    tab_thumb_cache_store (window, pixbuf);
+
+  return pixbuf;
+}
+
 void
 meta_screen_ensure_tab_popup (MetaScreen      *screen,
                               MetaTabList      list_type,
@@ -1282,7 +1552,7 @@ meta_screen_ensure_tab_popup (MetaScreen      *screen,
       MetaRectangle r;
       GdkPixbuf *win_pixbuf;
       int width, height;
-
+      GdkPixbuf *overlay;
       window = tmp->data;
       
       entries[i].key = (MetaTabEntryKey) window->xwindow;
@@ -1293,7 +1563,7 @@ meta_screen_ensure_tab_popup (MetaScreen      *screen,
         entries[i].icon = g_object_ref (window->icon);
       else
         {
-          int icon_width, icon_height, t_width, t_height;
+          int icon_width, icon_height, t_width, t_height, overlay_h, overlay_w;
 #define ICON_OFFSET 6
 
           icon_width = gdk_pixbuf_get_width (window->icon);
@@ -1302,16 +1572,36 @@ meta_screen_ensure_tab_popup (MetaScreen      *screen,
           t_width = width + ICON_OFFSET;
           t_height = height + ICON_OFFSET;
 
+          overlay_w = MIN (icon_width, MAX (16, t_width / 3));
+          overlay_h = MIN (icon_height, MAX (16, t_height / 3));
+
+          if (icon_width > 0 && icon_height > 0)
+            {
+              double sx = (double) overlay_w / icon_width;
+              double sy = (double) overlay_h / icon_height;
+              double s = MIN (sx, sy);
+
+              overlay_w = MAX (1, (int) (icon_width * s));
+              overlay_h = MAX (1, (int) (icon_height * s));
+            }
+
+            if (overlay_w != icon_width || overlay_h != icon_height)
+              overlay = gdk_pixbuf_scale_simple (window->icon,
+                                                overlay_w, overlay_h,
+                                                GDK_INTERP_BILINEAR);
+            else
+              overlay = g_object_ref (window->icon);
+
           entries[i].icon = gdk_pixbuf_new (GDK_COLORSPACE_RGB, TRUE, 8,
                                             t_width, t_height);
           gdk_pixbuf_fill (entries[i].icon, 0x00000000);
           gdk_pixbuf_copy_area (win_pixbuf, 0, 0, width, height,
                                 entries[i].icon, 0, 0);
           g_object_unref (win_pixbuf);
-          gdk_pixbuf_composite (window->icon, entries[i].icon, 
-                                t_width - icon_width, t_height - icon_height,
-                                icon_width, icon_height,
-                                t_width - icon_width, t_height - icon_height, 
+          gdk_pixbuf_composite (overlay, entries[i].icon, 
+                                t_width - overlay_w, t_height - overlay_h,
+                                overlay_w, overlay_h,
+                                t_width - overlay_w, t_height - overlay_h, 
                                 1.0, 1.0, GDK_INTERP_BILINEAR, 255);
         }
                                 
