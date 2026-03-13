@@ -1208,7 +1208,7 @@ meta_screen_update_cursor (MetaScreen *screen)
   XFreeCursor (screen->display->xdisplay, xcursor);
 }
 
-#define MAX_PREVIEW_SIZE 150
+#define MAX_PREVIEW_SIZE 260
 
 static GdkPixbuf *
 get_window_pixbuf_fallback (MetaWindow *window,
