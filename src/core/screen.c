@@ -1399,8 +1399,10 @@ get_window_pixbuf_xrender (MetaWindow *window,
   if (format == NULL)
     return NULL;
 
+  meta_error_trap_push_with_return (display);
   dst_pixmap = XCreatePixmap (xdisplay, src_pixmap, dst_width, dst_height, depth);
-  if (dst_pixmap == None)
+  if (meta_error_trap_pop_with_return (display, FALSE) != Success ||
+      dst_pixmap == None)
     return NULL;
 
   src_picture = None;
